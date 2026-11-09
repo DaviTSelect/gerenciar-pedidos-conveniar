@@ -443,8 +443,8 @@ class App(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{VERSION}")
-        self.resize(1180, 720)
-        self.setMinimumSize(900, 640)
+        self.resize(1180, 730)
+        self.setMinimumSize(900, 650)
         self.setStyleSheet(f"background: {BG};")
         self.spreadsheet = ""
         self.mode = MODE_REABRIR
