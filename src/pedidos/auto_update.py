@@ -98,16 +98,27 @@ def tem_versao_nova(release: dict, versao_atual: str) -> bool:
 
 
 def instalar(release: dict, nome_exe: str = NOME_EXE) -> None:
-    """Baixa o EXE, exige SHA-256 e agenda a troca via PowerShell."""
+    """Baixa o EXE, verifica SHA-256 via arquivo .sha256 e agenda a troca via PowerShell."""
     asset = next((a for a in release.get("assets", []) if a["name"] == nome_exe), None)
     if asset is None:
         raise RuntimeError(f"Release não contém o asset '{nome_exe}'")
-    esperado = asset.get("digest")
-    if not isinstance(esperado, str) or not esperado.startswith("sha256:"):
-        raise RuntimeError("Release asset sem digest SHA-256; atualização cancelada")
-    hash_esperado = esperado.removeprefix("sha256:").lower()
-    if len(hash_esperado) != 64 or any(c not in "0123456789abcdef" for c in hash_esperado):
-        raise RuntimeError("Digest SHA-256 inválido; atualização cancelada")
+
+    # Lê o hash do arquivo .sha256 (asset separado publicado pelo release.bat).
+    # A API do GitHub não fornece campo 'digest' para assets — precisamos do arquivo.
+    nome_sha = nome_exe + ".sha256"
+    sha_asset = next((a for a in release.get("assets", []) if a["name"] == nome_sha), None)
+    if sha_asset is None:
+        raise RuntimeError(f"Release não contém '{nome_sha}'; atualização cancelada")
+    req_sha = urllib.request.Request(
+        sha_asset["browser_download_url"], headers={"User-Agent": _USER_AGENT}
+    )
+    with urllib.request.urlopen(req_sha, timeout=12) as resp:
+        conteudo_sha = resp.read().decode("utf-8").strip()
+    # Suporta tanto "abc123..." (hash puro) quanto "abc123...  filename" (formato shasum)
+    hash_esperado = conteudo_sha.split()[0].lower()
+    if len(hash_esperado) != 64 or not all(c in "0123456789abcdef" for c in hash_esperado):
+        raise RuntimeError(f"Hash inválido no arquivo '{nome_sha}'")
+
     exe_atual = Path(sys.executable).resolve()
     if exe_atual.name.lower() != nome_exe.lower():
         raise RuntimeError(f"Executável instalado deve se chamar '{nome_exe}'")
