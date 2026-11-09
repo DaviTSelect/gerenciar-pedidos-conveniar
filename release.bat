@@ -5,36 +5,37 @@ echo ============================================
 echo  Release - Gerenciar Pedidos Conveniar
 echo ============================================
 
-:: Lê a versão atual de version.py
-for /f "tokens=2 delims=='\"" %%v in ('findstr /r "VERSION *= *\"" src\pedidos\version.py') do set VERSION=%%v
+:: Le a versao via Python (mais seguro que findstr/for /f com aspas)
+for /f "usebackq delims=" %%v in (`python -c "import sys; sys.path.insert(0,'src'); from pedidos.version import VERSION; print(VERSION)"`) do set VERSION=%%v
 if "%VERSION%"=="" (
     echo ERRO: nao foi possivel ler VERSION de src\pedidos\version.py
     pause & exit /b 1
 )
 set TAG=v%VERSION%
-echo Versao detectada: %TAG%
+echo Versao: %TAG%
 echo.
 
-:: Verifica se a tag ja existe remotamente
-git fetch --tags -q
+:: Verifica se a tag ja existe (evita sobrescrever release publicada)
+git fetch --tags -q 2>nul
 git rev-parse "%TAG%" >nul 2>&1
 if %ERRORLEVEL% equ 0 (
-    echo ERRO: tag %TAG% ja existe. Incremente VERSION em src\pedidos\version.py antes de fazer release.
+    echo ERRO: tag %TAG% ja existe.
+    echo Incremente VERSION em src\pedidos\version.py antes de fazer release.
     pause & exit /b 1
 )
 
-:: Instala dependencias de build
+:: [1/5] Instala dependencias de build
 echo [1/5] Instalando dependencias de build...
 pip install -r requirements-build.txt -q
 if %ERRORLEVEL% neq 0 ( echo ERRO ao instalar dependencias & pause & exit /b 1 )
 
-:: Roda testes
+:: [2/5] Roda testes
 echo [2/5] Executando testes...
 set PYTHONPATH=src
 python -m pytest tests -q
 if %ERRORLEVEL% neq 0 ( echo ERRO nos testes & pause & exit /b 1 )
 
-:: Compila o executavel
+:: [3/5] Compila o executavel
 echo [3/5] Compilando executavel...
 if exist dist rmdir /s /q dist
 pyinstaller GerenciarPedidos.spec --noconfirm
@@ -44,41 +45,49 @@ if not exist "dist\GerenciarPedidos.exe" (
     pause & exit /b 1
 )
 
-:: Calcula SHA-256
+:: [4/5] Calcula SHA-256
 echo [4/5] Calculando SHA-256...
-for /f "usebackq" %%h in (`powershell -NoProfile -Command "(Get-FileHash 'dist\GerenciarPedidos.exe' -Algorithm SHA256).Hash.ToLower()"`) do set SHA256=%%h
+for /f "usebackq delims=" %%h in (`powershell -NoProfile -Command "(Get-FileHash 'dist\GerenciarPedidos.exe' -Algorithm SHA256).Hash.ToLower()"`) do set SHA256=%%h
 echo %SHA256%  GerenciarPedidos.exe > dist\GerenciarPedidos.exe.sha256
 echo SHA-256: %SHA256%
 
-:: Cria tag, envia e cria release com os arquivos
-echo [5/5] Criando tag %TAG% e publicando release no GitHub...
+:: [5/5] Cria tag, envia e publica release com EXE e SHA-256
+echo [5/5] Publicando release %TAG% no GitHub...
 git tag %TAG%
 git push origin %TAG%
 if %ERRORLEVEL% neq 0 (
-    git tag -d %TAG%
+    git tag -d %TAG% >nul 2>&1
     echo ERRO ao enviar tag para o GitHub
     pause & exit /b 1
 )
 
+:: Escreve notas em arquivo temporario (evita problemas com escaping de multiline)
+set NOTES_FILE=%TEMP%\release_notes_%VERSION%.md
+(
+    echo ## Instalacao
+    echo.
+    echo 1. Baixe GerenciarPedidos.exe
+    echo 2. Coloque na pasta desejada
+    echo 3. Crie um arquivo .env na mesma pasta:
+    echo    CONVENIAR_USERNAME=seu_usuario
+    echo    CONVENIAR_PASSWORD=sua_senha
+    echo 4. Execute GerenciarPedidos.exe
+    echo.
+    echo **SHA-256:** %SHA256%
+) > "%NOTES_FILE%"
+
 gh release create %TAG% ^
-    dist\GerenciarPedidos.exe ^
-    dist\GerenciarPedidos.exe.sha256 ^
+    "dist\GerenciarPedidos.exe" ^
+    "dist\GerenciarPedidos.exe.sha256" ^
     --title "Gerenciar Pedidos Conveniar %TAG%" ^
-    --notes "## Instalacao
-
-1. Baixe GerenciarPedidos.exe
-2. Coloque na pasta desejada
-3. Crie um arquivo .env na mesma pasta:
-   CONVENIAR_USERNAME=seu_usuario
-   CONVENIAR_PASSWORD=sua_senha
-4. Execute GerenciarPedidos.exe
-
-**SHA-256:** %SHA256%"
+    --notes-file "%NOTES_FILE%"
 
 if %ERRORLEVEL% neq 0 (
     echo ERRO ao criar release no GitHub
+    del "%NOTES_FILE%" >nul 2>&1
     pause & exit /b 1
 )
+del "%NOTES_FILE%" >nul 2>&1
 
 echo.
 echo ============================================
