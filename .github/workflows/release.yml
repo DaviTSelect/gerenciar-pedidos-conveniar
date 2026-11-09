@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-build.txt
+
+      - name: Run tests
+        run: python -m pytest tests -q
+        env:
+          PYTHONPATH: src
+
+      - name: Build EXE
+        run: pyinstaller GerenciarPedidos.spec --noconfirm
+
+      - name: Compute SHA-256
+        id: sha
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist\GerenciarPedidos.exe -Algorithm SHA256).Hash.ToLower()
+          echo "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "$hash  GerenciarPedidos.exe" | Out-File -Encoding utf8 dist\GerenciarPedidos.exe.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/GerenciarPedidos.exe
+            dist/GerenciarPedidos.exe.sha256
+          body: |
+            ## Instalação
+
+            1. Baixe `GerenciarPedidos.exe`
+            2. Coloque na pasta desejada
+            3. Crie um arquivo `.env` na mesma pasta com suas credenciais:
+               ```
+               CONVENIAR_USERNAME=seu_usuario
+               CONVENIAR_PASSWORD=sua_senha
+               ```
+            4. Execute `GerenciarPedidos.exe`
+
+            **SHA-256:** `${{ steps.sha.outputs.sha256 }}`
