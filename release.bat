@@ -79,10 +79,7 @@ set NOTES_FILE=%TEMP%\release_notes_%VERSION%.md
     echo.
     echo 1. Baixe GerenciarPedidos.exe
     echo 2. Coloque na pasta desejada
-    echo 3. Crie um arquivo .env na mesma pasta:
-    echo    CONVENIAR_USERNAME=seu_usuario
-    echo    CONVENIAR_PASSWORD=sua_senha
-    echo 4. Execute GerenciarPedidos.exe
+    echo 3. Execute GerenciarPedidos.exe e informe usuario e senha na interface
     echo.
     echo **SHA-256:** %SHA256%
 ) > "%NOTES_FILE%"
