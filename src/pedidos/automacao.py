@@ -96,10 +96,12 @@ def _criar_driver() -> webdriver.Chrome:
     options.add_argument("--window-size=1920,1080")
     if CHROME_BINARY.is_file():
         options.binary_location = str(CHROME_BINARY)
+    # CREATE_NO_WINDOW evita que o processo chromedriver.exe abra janela de console
+    _CREATE_NO_WINDOW = 0x08000000
     service = (
-        Service(executable_path=str(CHROMEDRIVER_PATH))
+        Service(executable_path=str(CHROMEDRIVER_PATH), creationflags=_CREATE_NO_WINDOW)
         if CHROMEDRIVER_PATH.is_file()
-        else Service()
+        else Service(creationflags=_CREATE_NO_WINDOW)
     )
     return webdriver.Chrome(service=service, options=options)
 
