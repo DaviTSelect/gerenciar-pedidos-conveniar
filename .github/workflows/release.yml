@@ -1,64 +1,57 @@
-name: Release
+name: Release (backup)
+
+# Este workflow só compila se a release ainda não tiver o EXE anexado.
+# O fluxo principal é o release.bat rodado localmente, que compila e envia o EXE.
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  attach-exe:
     runs-on: windows-latest
-
     steps:
+      - name: Verificar se o EXE ja esta na release
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name' 2>$null
+          if ($assets -match "GerenciarPedidos.exe") {
+            echo "has_exe=true" >> $env:GITHUB_OUTPUT
+            Write-Host "EXE ja esta na release, nada a fazer."
+          } else {
+            echo "has_exe=false" >> $env:GITHUB_OUTPUT
+            Write-Host "EXE nao encontrado, compilando..."
+          }
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.has_exe == 'false'
 
       - name: Set up Python
+        if: steps.check.outputs.has_exe == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Instalar dependencias e compilar
+        if: steps.check.outputs.has_exe == 'false'
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-build.txt
+          pip install -r requirements.txt -q
+          pip install -r requirements-build.txt -q
+          pyinstaller GerenciarPedidos.spec --noconfirm
 
-      - name: Run tests
-        run: python -m pytest tests -q
-        env:
-          PYTHONPATH: src
-
-      - name: Build EXE
-        run: pyinstaller GerenciarPedidos.spec --noconfirm
-
-      - name: Compute SHA-256
-        id: sha
+      - name: Calcular SHA-256 e anexar
+        if: steps.check.outputs.has_exe == 'false'
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $hash = (Get-FileHash dist\GerenciarPedidos.exe -Algorithm SHA256).Hash.ToLower()
-          echo "sha256=$hash" >> $env:GITHUB_OUTPUT
           "$hash  GerenciarPedidos.exe" | Out-File -Encoding utf8 dist\GerenciarPedidos.exe.sha256
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          generate_release_notes: true
-          files: |
-            dist/GerenciarPedidos.exe
-            dist/GerenciarPedidos.exe.sha256
-          body: |
-            ## Instalação
-
-            1. Baixe `GerenciarPedidos.exe`
-            2. Coloque na pasta desejada
-            3. Crie um arquivo `.env` na mesma pasta com suas credenciais:
-               ```
-               CONVENIAR_USERNAME=seu_usuario
-               CONVENIAR_PASSWORD=sua_senha
-               ```
-            4. Execute `GerenciarPedidos.exe`
-
-            **SHA-256:** `${{ steps.sha.outputs.sha256 }}`
+          gh release upload $env:GITHUB_REF_NAME dist\GerenciarPedidos.exe dist\GerenciarPedidos.exe.sha256 --repo $env:GITHUB_REPOSITORY
+          Write-Host "EXE anexado com sucesso."
