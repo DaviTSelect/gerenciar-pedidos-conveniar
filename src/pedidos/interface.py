@@ -16,6 +16,7 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -131,13 +132,14 @@ class ProcessingWorker(QThread):
     failed = Signal(str)
 
     def __init__(self, spreadsheet: str, action_index: int, username: str,
-                 password: str, cancel_event: Event) -> None:
+                 password: str, cancel_event: Event, headless: bool = False) -> None:
         super().__init__()
         self.spreadsheet = spreadsheet
         self.action_index = action_index
         self.username = username
         self.password = password
         self.cancel_event = cancel_event
+        self.headless = headless
 
     def run(self) -> None:
         try:
@@ -148,6 +150,7 @@ class ProcessingWorker(QThread):
                 self.password,
                 self.progress.emit,
                 self.cancel_event,
+                headless=self.headless,
             )
             self.succeeded.emit(result)
         except Exception as exc:
@@ -632,6 +635,15 @@ class App(QWidget):
         self.ready_hint = criar_rotulo("Preencha as etapas acima para continuar.", 9, "#838c91", wrap=True)
         texts.addWidget(self.ready_title)
         texts.addWidget(self.ready_hint)
+        self.headless_check = QCheckBox("Ocultar janela Chrome")
+        self.headless_check.setStyleSheet(
+            "QCheckBox { color:#344a5b; font:10px 'Segoe UI'; background:transparent; }"
+            "QCheckBox::indicator { width:16px; height:16px; border:1px solid #c5cac8;"
+            " border-radius:4px; background:#fff; }"
+            "QCheckBox::indicator:checked { background:#317458; border-color:#317458; }"
+        )
+        texts.addSpacing(6)
+        texts.addWidget(self.headless_check)
         fl.addLayout(texts, 1)
         self.stop_button = QPushButton("Parar após o pedido atual")
         self.stop_button.setFixedHeight(46)
@@ -728,6 +740,7 @@ class App(QWidget):
             self.credentials_row.username,
             self.credentials_row.password,
             self.cancel_event,
+            headless=self.headless_check.isChecked(),
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.succeeded.connect(self.sinal_tarefa_concluida)

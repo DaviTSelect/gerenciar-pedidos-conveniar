@@ -83,7 +83,7 @@ def validar_configuracao(action: FinalAction) -> None:
         raise ValueError(f"Seletores do dialog de '{action.label}' não configurados em config.py.")
 
 
-def _criar_driver() -> webdriver.Chrome:
+def _criar_driver(headless: bool = False) -> webdriver.Chrome:
     options = Options()
     options.add_argument("--log-level=3")
     options.add_experimental_option("excludeSwitches", ["enable-logging"])
@@ -94,6 +94,8 @@ def _criar_driver() -> webdriver.Chrome:
     options.add_argument("--disable-infobars")
     options.add_argument("--start-maximized")
     options.add_argument("--window-size=1920,1080")
+    if headless:
+        options.add_argument("--headless=new")
     if CHROME_BINARY.is_file():
         options.binary_location = str(CHROME_BINARY)
     # CREATE_NO_WINDOW evita que o processo chromedriver.exe abra janela de console
@@ -396,6 +398,7 @@ def processar_pedidos(
     password: str,
     progress: ProgressCallback,
     cancel_event: Event | None = None,
+    headless: bool = False,
 ) -> ProcessingSummary:
     """Faz login uma vez e processa cada linha da planilha em sequência."""
     if not 0 <= action_index < len(FINAL_ACTIONS):
@@ -408,7 +411,7 @@ def processar_pedidos(
     pares = carregar_pedidos(planilha)
     progress(f"Planilha carregada: {len(pares)} pedido(s).")
 
-    driver = _criar_driver()
+    driver = _criar_driver(headless=headless)
     completed = 0
     failed: list[str] = []
     cancelled = False
