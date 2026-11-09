@@ -2,34 +2,8 @@
 
 from __future__ import annotations
 
-import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-
-def _carregar_env() -> None:
-    """Carrega .env sem dependência externa. Variáveis já definidas não são sobrescritas."""
-    if getattr(sys, "frozen", False):
-        env_path = Path(sys.executable).parent / ".env"
-    else:
-        env_path = Path(__file__).parent.parent.parent / ".env"
-    if not env_path.exists():
-        return
-    for linha in env_path.read_text(encoding="utf-8").splitlines():
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, _, valor = linha.partition("=")
-        chave = chave.strip()
-        if chave and chave not in os.environ:
-            os.environ[chave] = valor.strip()
-
-
-_carregar_env()
-
-CONVENIAR_USERNAME: str = os.environ.get("CONVENIAR_USERNAME", "")
-CONVENIAR_PASSWORD: str = os.environ.get("CONVENIAR_PASSWORD", "")
 
 LOGIN_URL = (
     "https://facto.conveniar.com.br/Fundacao/Forms/Convenio/"

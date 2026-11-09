@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -34,7 +35,7 @@ from PySide6.QtCore import QThread
 
 from .automacao import ProcessingSummary, processar_pedidos
 from .auto_update import verificar_e_instalar
-from .config import CONVENIAR_PASSWORD, CONVENIAR_USERNAME, FINAL_ACTIONS
+from .config import FINAL_ACTIONS
 from .version import APP_NAME, NOME_EXE, VERSION
 
 _MUTEX_INSTANCIA = None
@@ -74,7 +75,7 @@ MODE_TEXTS = {
         "eyebrow": "R E A B R I R   P E D I D O S",
         "intro": "Selecione a planilha com os pedidos. O sistema irá reabrir cada um, estornar lançamentos, cancelar entradas e confirmar a reabertura.",
         "title": "Configurar reabertura",
-        "subtitle": "Selecione a planilha para começar",
+        "subtitle": "Preencha as etapas para continuar",
         "start": "Iniciar reabertura   →",
         "running": "Reabertura em andamento",
         "running_hint": "Aguarde: cada pedido está sendo processado no Conveniar.",
@@ -84,7 +85,7 @@ MODE_TEXTS = {
         "eyebrow": "C A N C E L A R   P E D I D O S",
         "intro": "Selecione a planilha com os pedidos. O sistema irá cancelar cada um, estornar lançamentos, cancelar entradas e confirmar o cancelamento.",
         "title": "Configurar cancelamento",
-        "subtitle": "Selecione a planilha para começar",
+        "subtitle": "Preencha as etapas para continuar",
         "start": "Iniciar cancelamento   →",
         "running": "Cancelamento em andamento",
         "running_hint": "Aguarde: cada pedido está sendo processado no Conveniar.",
@@ -94,7 +95,7 @@ MODE_TEXTS = {
         "eyebrow": "E N C E R R A R   P E D I D O S",
         "intro": "Selecione a planilha com os pedidos. O sistema irá encerrar cada um após estornar lançamentos e cancelar entradas.",
         "title": "Configurar encerramento",
-        "subtitle": "Selecione a planilha para começar",
+        "subtitle": "Preencha as etapas para continuar",
         "start": "Iniciar encerramento   →",
         "running": "Encerramento em andamento",
         "running_hint": "Aguarde: cada pedido está sendo processado no Conveniar.",
@@ -358,6 +359,76 @@ class SelectionRow(QFrame):
         self.button.setEnabled(enabled)
 
 
+class CredentialsRow(QFrame):
+    """Etapa de credenciais: dois campos inline (usuário + senha)."""
+
+    changed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("credRow")
+        self.setStyleSheet("#credRow { background: transparent; border: none; }")
+        self.setMinimumHeight(110)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(16, 18, 16, 18)
+        outer.setSpacing(12)
+
+        icon_holder = QFrame()
+        icon_holder.setFixedSize(43, 43)
+        icon_holder.setStyleSheet(ESTILO_FUNDO_ICONE)
+        icon_lay = QHBoxLayout(icon_holder)
+        icon_lay.setContentsMargins(0, 0, 0, 0)
+        icon_lay.addWidget(Icon("key"))
+        outer.addWidget(icon_holder, 0, Qt.AlignTop)
+
+        content = QVBoxLayout()
+        content.setSpacing(0)
+        content.setContentsMargins(0, 1, 0, 0)
+        content.addWidget(criar_rotulo("ETAPA 02", 9, "#7b8791", QFont.Bold))
+        content.addSpacing(5)
+        content.addWidget(criar_rotulo("Credenciais", 12, BG, QFont.DemiBold))
+        content.addSpacing(6)
+
+        fields = QHBoxLayout()
+        fields.setSpacing(10)
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText("Usuário")
+        self.username_input.setFixedHeight(32)
+        self.username_input.setStyleSheet(
+            "QLineEdit {background:#ffffff; border:1px solid #d9dddc; border-radius:7px;"
+            " color:#344a5b; font:11px 'Segoe UI'; padding:0 8px;}"
+            " QLineEdit:focus {border-color:#a0b0bc;}"
+        )
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("Senha")
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setFixedHeight(32)
+        self.password_input.setStyleSheet(self.username_input.styleSheet())
+        fields.addWidget(self.username_input)
+        fields.addWidget(self.password_input)
+        content.addLayout(fields)
+
+        content.addSpacing(4)
+        content.addWidget(criar_rotulo("A senha não é salva e nunca sai do computador.", 9, "#9aa3a9"))
+        content.addStretch()
+        outer.addLayout(content, 1)
+
+        self.username_input.textChanged.connect(self.changed)
+        self.password_input.textChanged.connect(self.changed)
+
+    @property
+    def username(self) -> str:
+        return self.username_input.text().strip()
+
+    @property
+    def password(self) -> str:
+        return self.password_input.text()
+
+    def set_enabled(self, enabled: bool):
+        self.username_input.setEnabled(enabled)
+        self.password_input.setEnabled(enabled)
+
+
 # ---------------------------------------------------------------------------
 # Janela principal
 # ---------------------------------------------------------------------------
@@ -502,7 +573,7 @@ class App(QWidget):
         titles.addWidget(self.card_subtitle)
         top.addLayout(titles)
         top.addStretch()
-        self.count_badge = criar_rotulo("0 de 1", 9, "#68747d", QFont.Bold)
+        self.count_badge = criar_rotulo("0 de 2", 9, "#68747d", QFont.Bold)
         self.count_badge.setStyleSheet(
             "color:#68747d; background:transparent; border:1px solid #d9dddc; border-radius:12px; padding:6px 12px;"
         )
@@ -516,6 +587,8 @@ class App(QWidget):
             "Selecionar planilha", "file",
             self._escolher_planilha,
         )
+        self.credentials_row = CredentialsRow()
+        self.credentials_row.changed.connect(self._atualizar_estado)
 
         page = QWidget()
         page.setStyleSheet("background: transparent;")
@@ -523,6 +596,8 @@ class App(QWidget):
         pl.setContentsMargins(0, 0, 0, 0)
         pl.setSpacing(0)
         pl.addWidget(self.spreadsheet_row)
+        pl.addWidget(criar_divisor("#e3e5e2"))
+        pl.addWidget(self.credentials_row)
         pl.addStretch()
         layout.addWidget(page)
 
@@ -622,14 +697,15 @@ class App(QWidget):
             self._atualizar_estado()
 
     def _atualizar_estado(self, *_):
-        count = int(bool(self.spreadsheet))
-        ready = count == 1
+        count = sum([bool(self.spreadsheet), bool(self.credentials_row.username and self.credentials_row.password)])
+        ready = count == 2
         texts = MODE_TEXTS[self.mode]
-        self.count_badge.setText(f"{count} de 1")
+        self.count_badge.setText(f"{count} de 2")
 
         for btn in self.mode_buttons:
             btn.setEnabled(not self.started)
         self.spreadsheet_row.set_enabled(not self.started)
+        self.credentials_row.set_enabled(not self.started)
 
         if self.started:
             self.ready_title.setText(texts["running"])
@@ -637,7 +713,7 @@ class App(QWidget):
         else:
             self.ready_title.setText("Tudo pronto para começar" if ready else "Aguardando configurações")
             self.ready_hint.setText(
-                "Revise e clique em iniciar." if ready else "Selecione a planilha acima para continuar."
+                "Revise as etapas e clique em iniciar." if ready else "Preencha as etapas acima para continuar."
             )
 
         can_start = ready and not self.started
@@ -645,15 +721,7 @@ class App(QWidget):
         self.start_button.setStyleSheet(ESTILO_INICIAR_ATIVO if can_start else ESTILO_INICIAR_INATIVO)
 
     def _iniciar(self):
-        if not self.spreadsheet:
-            return
-        if not CONVENIAR_USERNAME or not CONVENIAR_PASSWORD:
-            QMessageBox.warning(
-                self, "Credenciais não configuradas",
-                "Crie um arquivo .env na mesma pasta do executável com:\n\n"
-                "CONVENIAR_USERNAME=seu_usuario\n"
-                "CONVENIAR_PASSWORD=sua_senha",
-            )
+        if not self.spreadsheet or not self.credentials_row.username or not self.credentials_row.password:
             return
         self.started = True
         self.cancel_event = Event()
@@ -665,8 +733,8 @@ class App(QWidget):
         self.worker = ProcessingWorker(
             self.spreadsheet,
             self.mode,
-            CONVENIAR_USERNAME,
-            CONVENIAR_PASSWORD,
+            self.credentials_row.username,
+            self.credentials_row.password,
             self.cancel_event,
             headless=self.headless_check.isChecked(),
         )
