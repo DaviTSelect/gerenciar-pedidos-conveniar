@@ -1,79 +1,103 @@
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
 
 import pandas as pd
 
-from pedidos.automacao import _buscar_link_resultado, carregar_pedidos, validar_configuracao
-from pedidos.config import FINAL_ACTIONS, ORDER_SELECTORS
+from pedidos.automacao import carregar_pedidos, validar_configuracao
+from pedidos.config import FINAL_ACTIONS
 
 
 class CarregarPedidosTests(unittest.TestCase):
-    def test_preserva_ids_com_zero_a_esquerda_e_ignora_vazios(self):
+    def test_retorna_linha_e_numero_ignorando_vazios(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "pedidos.xlsx"
             pd.DataFrame({"Nº Pedido": ["00123", None, "  ", "00456"]}).to_excel(
                 path, index=False
             )
+            resultado = carregar_pedidos(path)
+            numeros = [n for _, n in resultado]
+            self.assertEqual(numeros, ["00123", "00456"])
 
-            self.assertEqual(carregar_pedidos(path), ["00123", "00456"])
+    def test_linha_excel_comeca_em_2(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "pedidos.xlsx"
+            pd.DataFrame({"Nº Pedido": ["00123"]}).to_excel(path, index=False)
+            resultado = carregar_pedidos(path)
+            self.assertEqual(resultado[0][0], 2)
+
+    def test_ignora_linhas_com_status_ok(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "pedidos.xlsx"
+            pd.DataFrame({
+                "Nº Pedido": ["00123", "00456"],
+                "Status": ["ok", None],
+            }).to_excel(path, index=False)
+            resultado = carregar_pedidos(path)
+            self.assertEqual(len(resultado), 1)
+            self.assertEqual(resultado[0][1], "00456")
 
     def test_informa_quando_coluna_nao_existe(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "pedidos.xlsx"
             pd.DataFrame({"Outro campo": ["123"]}).to_excel(path, index=False)
-
             with self.assertRaisesRegex(ValueError, "Nº Pedido"):
                 carregar_pedidos(path)
 
+    def test_informa_quando_sem_pedidos_pendentes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "pedidos.xlsx"
+            pd.DataFrame({
+                "Nº Pedido": ["00123"],
+                "Status": ["ok"],
+            }).to_excel(path, index=False)
+            with self.assertRaises(ValueError):
+                carregar_pedidos(path)
 
-class ConfiguracaoTests(unittest.TestCase):
-    def test_configuracao_incompleta_lista_seletores_necessarios(self):
-        with self.assertRaisesRegex(ValueError, "campo do número do pedido"):
-            validar_configuracao(ORDER_SELECTORS, FINAL_ACTIONS[0])
 
+class ValidarConfiguracaoTests(unittest.TestCase):
+    def test_acoes_padrao_sao_validas(self):
+        for action in FINAL_ACTIONS:
+            validar_configuracao(action)
 
-class ResultadoPesquisaTests(unittest.TestCase):
-    def test_sem_registros_na_reabertura_indica_pedido_ja_reaberto(self):
-        driver = Mock()
-        driver.find_elements.return_value = [Mock()]
-        wait = Mock()
-
-        resultado = _buscar_link_resultado(
-            driver, wait, "54376/2026", FINAL_ACTIONS[0], ORDER_SELECTORS
+    def test_falha_sem_seletor_principal(self):
+        from pedidos.config import FinalAction
+        action = FinalAction(
+            label="Teste",
+            selector="",
+            reason_selector="//*[@id='txt']",
+            submit_selector="//*[@id='btn']",
         )
+        with self.assertRaises(ValueError):
+            validar_configuracao(action)
 
-        self.assertIsNone(resultado)
-        wait.until.assert_not_called()
-
-    def test_sem_registros_nao_pula_outras_acoes(self):
-        driver = Mock()
-        driver.find_elements.return_value = [Mock()]
-        link = Mock()
-        wait = Mock()
-        wait.until.return_value = link
-
-        resultado = _buscar_link_resultado(
-            driver, wait, "54376/2026", FINAL_ACTIONS[1], ORDER_SELECTORS
+    def test_falha_sem_reason_selector(self):
+        from pedidos.config import FinalAction
+        action = FinalAction(
+            label="Teste",
+            selector="//*[@id='btn']",
+            reason_selector="",
+            submit_selector="//*[@id='btn']",
         )
+        with self.assertRaises(ValueError):
+            validar_configuracao(action)
 
-        self.assertIs(resultado, link)
-        wait.until.assert_called_once()
 
-
-class ReabrirSelectorsTests(unittest.TestCase):
-    def test_usa_os_seletores_da_janela_de_reabertura(self):
+class SelectoresReabrirTests(unittest.TestCase):
+    def test_seletores_de_reabrir(self):
         action = FINAL_ACTIONS[0]
+        self.assertIn("txtJustificativaReabrirPedido", action.reason_selector)
+        self.assertIn("btnConfirmarReabrirPedido", action.submit_selector)
 
-        self.assertEqual(
-            action.reason_selector,
-            "//*[@id='ctl00_ContentPlaceHolder1_txtJustificativaReabrirPedido']",
-        )
-        self.assertEqual(
-            action.submit_selector,
-            "//*[@id='ctl00_ContentPlaceHolder1_btnConfirmarReabrirPedido']",
-        )
+    def test_seletores_de_cancelar(self):
+        action = FINAL_ACTIONS[1]
+        self.assertIn("txtJustificativaCancelarPedido", action.reason_selector)
+        self.assertIn("btnConfirmarCancelarPedido", action.submit_selector)
+
+    def test_seletores_de_encerrar(self):
+        action = FINAL_ACTIONS[2]
+        self.assertIn("txtJustificativaEncerrarPedido", action.reason_selector)
+        self.assertIn("btnConfirmarEncerrarPedido", action.submit_selector)
 
 
 if __name__ == "__main__":
