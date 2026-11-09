@@ -5,8 +5,19 @@ echo ============================================
 echo  Release - Gerenciar Pedidos Conveniar
 echo ============================================
 
+:: Usa o Python/pip/pyinstaller do .venv se existir, senao usa o do PATH
+if exist ".venv\Scripts\python.exe" (
+    set PY=.venv\Scripts\python.exe
+    set PIP=.venv\Scripts\pip.exe
+    set PYINST=.venv\Scripts\pyinstaller.exe
+) else (
+    set PY=python
+    set PIP=pip
+    set PYINST=pyinstaller
+)
+
 :: Le a versao via Python (mais seguro que findstr/for /f com aspas)
-for /f "usebackq delims=" %%v in (`python -c "import sys; sys.path.insert(0,'src'); from pedidos.version import VERSION; print(VERSION)"`) do set VERSION=%%v
+for /f "usebackq delims=" %%v in (`%PY% -c "import sys; sys.path.insert(0,'src'); from pedidos.version import VERSION; print(VERSION)"`) do set VERSION=%%v
 if "%VERSION%"=="" (
     echo ERRO: nao foi possivel ler VERSION de src\pedidos\version.py
     pause & exit /b 1
@@ -26,19 +37,19 @@ if %ERRORLEVEL% equ 0 (
 
 :: [1/5] Instala dependencias de build
 echo [1/5] Instalando dependencias de build...
-pip install -r requirements-build.txt -q
+%PIP% install -r requirements-build.txt -q
 if %ERRORLEVEL% neq 0 ( echo ERRO ao instalar dependencias & pause & exit /b 1 )
 
 :: [2/5] Roda testes
 echo [2/5] Executando testes...
 set PYTHONPATH=src
-python -m pytest tests -q
+%PY% -m pytest tests -q
 if %ERRORLEVEL% neq 0 ( echo ERRO nos testes & pause & exit /b 1 )
 
 :: [3/5] Compila o executavel
 echo [3/5] Compilando executavel...
 if exist dist rmdir /s /q dist
-pyinstaller GerenciarPedidos.spec --noconfirm
+%PYINST% GerenciarPedidos.spec --noconfirm
 if %ERRORLEVEL% neq 0 ( echo ERRO no PyInstaller & pause & exit /b 1 )
 if not exist "dist\GerenciarPedidos.exe" (
     echo ERRO: dist\GerenciarPedidos.exe nao encontrado
